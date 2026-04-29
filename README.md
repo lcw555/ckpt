@@ -7,14 +7,14 @@
 ### 方式一：Claude Code 插件市场
 
 ```bash
-claude /plugin marketplace add HUGE/ckpt
-claude /plugin install ckpt@HUGE/ckpt
+claude /plugin marketplace add lcw555/ckpt
+claude /plugin install ckpt@lcw555/ckpt
 ```
 
 ### 方式二：Git Clone + 手动配置（推荐）
 
 ```bash
-git clone https://github.com/HUGE/ckpt.git ~/.claude/plugins/ckpt
+git clone https://github.com/lcw555/ckpt.git ~/.claude/plugins/ckpt
 bash ~/.claude/plugins/ckpt/install.sh
 ```
 

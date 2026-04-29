@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "每次 AI 修改文件前自动保存旧版本，支持查看历史、瞬间回滚、分支探索。像 git 一样管理 AI 的每一次修改。",
   "author": {
-    "name": "HUGE"
+    "name": "lcw555"
   },
   "license": "MIT",
   "keywords": ["checkpoint", "rollback", "git", "backup", "history", "undo"],
