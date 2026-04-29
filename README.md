@@ -4,40 +4,29 @@
 
 ## 安装
 
-### 方式一：Claude Code 插件市场
+### 方式一：一键安装（推荐）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lcw555/ckpt/master/install.sh | bash
+```
+
+脚本会自动完成：clone 仓库 → 初始化检查点 → 配置 settings.json hook → 添加 shell alias。
+
+安装后**重启 Claude Code** 生效。
+
+### 方式二：Claude Code 插件市场
 
 ```bash
 claude /plugin marketplace add lcw555/ckpt
 claude /plugin install ckpt@lcw555/ckpt
 ```
 
-### 方式二：Git Clone + 手动配置（推荐）
+### 方式三：手动 Git Clone
 
 ```bash
 git clone https://github.com/lcw555/ckpt.git ~/.claude/plugins/ckpt
 bash ~/.claude/plugins/ckpt/install.sh
 ```
-
-**重要**：如果插件 hook 没有自动加载，需手动在 `~/.claude/settings.json` 中添加：
-
-```json
-"hooks": {
-  "PreToolUse": [
-    {
-      "matcher": "Edit|Write|MultiEdit",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ~/.claude/plugins/ckpt/hooks/ckpt-hook.sh",
-          "timeout": 10
-        }
-      ]
-    }
-  ]
-}
-```
-
-添加后**重启 Claude Code** 生效。
 
 ## 使用
 
