@@ -7,38 +7,101 @@
 ### 方式一：Claude Code 插件市场
 
 ```bash
-# 添加市场
 claude /plugin marketplace add HUGE/ckpt
-
-# 安装插件
 claude /plugin install ckpt@HUGE/ckpt
 ```
 
-### 方式二：Git Clone
+### 方式二：Git Clone + 手动配置（推荐）
 
 ```bash
 git clone https://github.com/HUGE/ckpt.git ~/.claude/plugins/ckpt
 bash ~/.claude/plugins/ckpt/install.sh
 ```
 
-### 方式三：手动安装
+**重要**：如果插件 hook 没有自动加载，需手动在 `~/.claude/settings.json` 中添加：
 
-将本仓库复制到 `~/.claude/plugins/ckpt/`，运行 `install.sh`。
+```json
+"hooks": {
+  "PreToolUse": [
+    {
+      "matcher": "Edit|Write|MultiEdit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/plugins/ckpt/hooks/ckpt-hook.sh",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}
+```
+
+添加后**重启 Claude Code** 生效。
 
 ## 使用
 
+### 快捷方式
+
+在 `~/.bashrc` 中添加 alias，之后可直接用 `ckpt` 命令：
+
 ```bash
-ckpt steps          # 查看所有检查点
-ckpt restore 3      # 回滚到第 3 个检查点
-ckpt try 新方案     # 创建分支探索
-ckpt end "最终版"   # 合并所有快照
+alias ckpt='bash ~/.claude/plugins/ckpt/scripts/ckpt'
 ```
+
+或每次使用完整路径：
+
+```bash
+bash ~/.claude/plugins/ckpt/scripts/ckpt <命令>
+```
+
+### 命令
+
+| 命令 | 说明 |
+|------|------|
+| `ckpt steps` | 查看所有检查点历史 |
+| `ckpt restore <N>` | 回滚文件到第 N 个检查点 |
+| `ckpt try <名称>` | 创建分支探索新方案 |
+| `ckpt end "信息"` | 合并所有快照为一个提交 |
+| `ckpt pre <文件>` | 手动保存某个文件的快照 |
+| `ckpt init` | 初始化检查点仓库 |
+
+### 示例
+
+```bash
+ckpt steps              # 列出所有检查点
+ckpt restore 5          # 回滚到第 5 个检查点
+ckpt try experiment-2   # 开分支探索
+ckpt end "完成重构"     # 合并快照
+```
+
+## 验证是否生效
+
+修改文件后运行 `ckpt steps`，如果看到新的 `ckpt-N` 记录则说明 hook 正常工作。
+
+## 跨平台支持
+
+支持 Linux、macOS、Windows (Git Bash / MSYS2)。脚本会自动：
+
+- 检测 `python3` / `python`（Windows 上常为后者）
+- 转换 Windows 盘符路径 (`C:/foo` → `/c/foo`) 和反斜杠
+- 适配 shell rc 文件位置（`.bashrc` / `.bash_profile` / `.zshrc`）
+- `chmod` 在 Windows 上静默跳过
+
+## 故障排查
+
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| 编辑文件没有记录 | settings.json 未配置 hook | 按上面步骤手动添加 hook 配置并重启 |
+| Hook 运行但未保存 | Python 未安装或不在 PATH | `which python3 python` 确认，安装 Python 3 |
+| install.sh 报错 | 非 bash 环境运行 | 在 Git Bash 中执行 `bash install.sh` |
+| 新文件未保存 | 设计如此 | ckpt 只保存已存在文件的旧版本，新文件跳过 |
 
 ## 原理
 
 - **PreToolUse Hook**：在 Edit/Write/MultiEdit 执行前，自动调用 `ckpt pre <文件>` 保存旧版本
-- **Git 存储**：所有快照保存在 `~/.claude/ckpt/repo/` 的 git 仓库中
-- **零配置**：安装即用，无需额外设置
+- **Git 存储**：所有快照保存在 `~/.claude/ckpt/repo/` 的 git 仓库中，每次保存打 `ckpt-N` tag
+- **只保存已有文件**：新建文件不会被保存（首次写入没有"旧版本"可存）
 
 ## 许可
 
