@@ -1,0 +1,195 @@
+#!/bin/bash
+# ckpt — checkpoint system: records file state BEFORE AI modification
+# Usage: ckpt {init|pre|steps|restore|try|end}
+set -e
+
+CKPT_DIR="$HOME/.claude/ckpt"
+REPO_DIR="$CKPT_DIR/repo"
+
+# ---- helpers ----
+
+_abs() {
+    # Normalize a path to Unix absolute form, stripping drive letters
+    local f="$1"
+    f="${f//\\//}"
+    # Convert C:/Users/... to /c/Users/...
+    if [[ "$f" =~ ^[a-zA-Z]:/ ]]; then
+        local drive="${f:0:1}"
+        f="/${drive,,}${f:2}"
+    fi
+    echo "$f"
+}
+
+_path_in_repo() {
+    # e.g. /c/Users/HUGE/proj/file.js → c/Users/HUGE/proj/file.js
+    local abs="$1"
+    echo "${abs#/}"
+}
+
+_abs_from_repo() {
+    # Reverse of _path_in_repo
+    echo "/$1"
+}
+
+_ensure_repo() {
+    mkdir -p "$REPO_DIR"
+    if [ ! -d "$REPO_DIR/.git" ]; then
+        cd "$REPO_DIR"
+        git init -q
+        git commit -q --allow-empty -m "ckpt: root"
+    fi
+}
+
+_next_tag() {
+    cd "$REPO_DIR"
+    local n=$(git tag -l 'ckpt-*' 2>/dev/null | sed 's/ckpt-//' | sort -n | tail -1)
+    n=$((n + 1))
+    echo "$n"
+}
+
+# ---- commands ----
+
+cmd_init() {
+    _ensure_repo
+    echo "[ckpt] initialized at $REPO_DIR"
+}
+
+cmd_pre() {
+    local file="$1"
+    [ -z "$file" ] && return 0       # nothing to save
+
+    local abs="$(_abs "$file")"
+
+    # Skip if file doesn't exist (new file being written for the first time)
+    [ ! -f "$abs" ] && return 0
+
+    _ensure_repo
+
+    local rel="$(_path_in_repo "$abs")"
+    local dest="$REPO_DIR/$rel"
+
+    mkdir -p "$(dirname "$dest")"
+    cp "$abs" "$dest"
+
+    cd "$REPO_DIR"
+    git add -A
+
+    if git diff --cached --quiet 2>/dev/null; then
+        return 0  # no change
+    fi
+
+    local n=$(_next_tag)
+    git commit -q -m "ckpt-$n: $(basename "$file")"
+    git tag "ckpt-$n"
+    echo "[ckpt-$n] saved  $(basename "$file")  ($(date +%H:%M:%S))"
+}
+
+cmd_steps() {
+    _ensure_repo
+    cd "$REPO_DIR"
+    echo "═══════════════════════════════════════════"
+    echo "  ckpt history"
+    echo "═══════════════════════════════════════════"
+    git log --oneline --format='%C(auto)%h %C(green)%s %C(blue)(%cr)%C(reset)' | grep -v 'ckpt: root'
+    echo ""
+    echo "Tags: $(git tag -l 'ckpt-*' | sort -V | tr '\n' ' ')"
+}
+
+cmd_restore() {
+    local n="$1"
+    [ -z "$n" ] && { echo "Usage: ckpt restore <N>"; return 1; }
+
+    _ensure_repo
+    cd "$REPO_DIR"
+
+    local tag="ckpt-$n"
+    git rev-parse "$tag" >/dev/null 2>&1 || {
+        echo "[ckpt] tag $tag not found"
+        return 1
+    }
+
+    local root=$(git rev-list --max-parents=0 HEAD)
+    local files=$(git diff --name-only "$root" "$tag" 2>/dev/null)
+
+    if [ -z "$files" ]; then
+        echo "[ckpt] no files in $tag"
+        return 0
+    fi
+
+    echo "[ckpt] restoring from $tag ..."
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        local target="$(_abs_from_repo "$f")"
+        mkdir -p "$(dirname "$target")"
+        cp "$REPO_DIR/$f" "$target"
+        echo "  ✓ $(basename "$target")"
+    done <<< "$files"
+    echo "[ckpt] restored $(echo "$files" | wc -l) file(s) to checkpoint $n"
+}
+
+cmd_try() {
+    local name="$1"
+    [ -z "$name" ] && { echo "Usage: ckpt try <name>"; return 1; }
+
+    _ensure_repo
+    cd "$REPO_DIR"
+    git checkout -b "try-$name" 2>/dev/null || {
+        echo "[ckpt] branch try-$name already exists, switching..."
+        git checkout "try-$name"
+    }
+    echo "[ckpt] on branch try-$name — explore freely, then:"
+    echo "         ckpt end          → keep & squash"
+    echo "         ckpt restore <N>  → discard & go back"
+}
+
+cmd_end() {
+    local msg="${1:-ckpt: final}"
+    _ensure_repo
+    cd "$REPO_DIR"
+
+    local count=$(git tag -l 'ckpt-*' 2>/dev/null | wc -l)
+    if [ "$count" -eq 0 ]; then
+        echo "[ckpt] nothing to squash"
+        return 0
+    fi
+
+    local branch=$(git branch --show-current)
+    local root=$(git rev-list --max-parents=0 HEAD)
+    git reset -q --soft "$root"
+    git commit -q -m "$msg"
+    for t in $(git tag -l 'ckpt-*' 2>/dev/null); do
+        git tag -d "$t" >/dev/null 2>&1 || true
+    done
+    echo "[ckpt] squashed $count checkpoint(s) → \"$msg\""
+}
+
+cmd_unwatch() {
+    echo "[ckpt] unwatch — auto-snapshot is controlled by Claude Code hooks."
+    echo "        Remove the PreToolUse hook for Edit/Write in settings.json to disable."
+}
+
+# ---- main ----
+
+case "${1:-}" in
+    init)     shift; cmd_init "$@" ;;
+    pre)      shift; cmd_pre "$@" ;;
+    steps|ls) shift; cmd_steps "$@" ;;
+    restore)  shift; cmd_restore "$@" ;;
+    try)      shift; cmd_try "$@" ;;
+    end)      shift; cmd_end "$@" ;;
+    unwatch)  shift; cmd_unwatch "$@" ;;
+    *)
+        echo "ckpt — file checkpoint system for AI tools"
+        echo ""
+        echo "Commands:"
+        echo "  ckpt init            Initialize the checkpoint repo"
+        echo "  ckpt pre <file>      Save file state before modification"
+        echo "  ckpt steps           List all checkpoints"
+        echo "  ckpt restore <N>     Restore file(s) from checkpoint N"
+        echo "  ckpt try <name>      Start an exploration branch"
+        echo "  ckpt end [msg]       Squash all checkpoints into one commit"
+        echo "  ckpt unwatch         Info about disabling auto-snapshot"
+        echo ""
+        echo "Repo: $REPO_DIR"
+        ;;
+esac

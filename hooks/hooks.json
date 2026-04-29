@@ -1,0 +1,17 @@
+{
+  "description": "ckpt — Edit/Write/MultiEdit 前自动保存文件旧版本，方便追溯回滚",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/ckpt-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
